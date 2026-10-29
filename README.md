@@ -1,235 +1,109 @@
-# Customer Churn Prediction System
+# Customer Churn Prediction
 
-## 1. Project Overview
+## Project overview
 
-Customer Churn Prediction System is a Machine Learning project that predicts whether a telecom customer is likely to churn or stay.
+This project analyzes the supplied Cell2Cell telecom churn data, compares seven classification pipelines, saves the selected fitted pipeline, and provides a Streamlit interface for single-customer or CSV predictions.
 
-The project uses the IBM Telco Customer Churn dataset and compares multiple classification algorithms.
+The original IBM Telco analysis and model are preserved as `notebooks/churn_analysis_ibm_backup.ipynb` and `models/churn_model_ibm_backup.pkl`. The active notebook, model and app now use the Cell2Cell feature schema.
 
-The final selected model is Logistic Regression, which is integrated into a Streamlit web application.
+## Dataset
 
----
+The CSV files were supplied in the project workspace. Their upstream publisher and license were not recorded in the repository, so verify and cite the source/license separately before redistributing them.
 
-## 2. Problem Statement
+| File | Actual shape | Churn status |
+|---|---:|---|
+| `dataset/cell2celltrain.csv` | 51,047 rows × 58 columns | 36,336 No; 14,711 Yes |
+| `dataset/cell2cellholdout.csv` | 20,000 rows × 58 columns | `Churn` exists but all 20,000 values are missing |
 
-Customer churn occurs when a customer stops using a company's services.
+Both files have the same columns. Each contains zero exact duplicate rows and unique, non-missing `CustomerID` values; there are no IDs shared between train and holdout. Training churn prevalence is 28.82%, so accuracy alone is not an adequate selection metric.
 
-The objective of this project is to:
+The training file has 3,515 missing cells across 14 columns. The holdout has 21,304 missing cells, including all 20,000 target values and 1,304 missing predictor values. Missing data is imputed in the fitted pipelines; rows are not dropped. The notebook prints full per-column data types and missing-value counts.
 
-- Analyze customer information
-- Identify patterns associated with churn
-- Train machine learning classification models
-- Compare model performance
-- Predict the probability of customer churn
-- Classify customers into different risk levels
+The training file has 58 source columns. `CustomerID` and `Churn` are excluded from the 56 model inputs; the ID remains available in raw data and prediction results. The unlabeled holdout is reserved for inference and is not used to calculate evaluation metrics.
 
----
+## Cleaning and preprocessing
 
-## 3. Dataset
+- Validate that the training target contains only `Yes` and `No`, then map them to 1 and 0.
+- Preserve source rows and columns; keep `CustomerID` for tracing but never pass it to the model.
+- Split numerical and categorical predictors and impute missing values separately.
+- Standardize numerical inputs and one-hot encode categorical inputs with unknown categories ignored. Categories with fewer than 20 training examples are grouped to control the high-cardinality `ServiceArea` feature.
+- Use one stratified 80/20 split (40,837 train and 10,210 test rows). Every transform is fitted within each model Pipeline using training rows only.
+- Compare all models on the same held-out test rows. Class weighting is applied where supported to address churn imbalance.
 
-Dataset: IBM Telco Customer Churn Dataset
+## Models and evaluation
 
-Original dataset:
+The notebook compares Logistic Regression, Decision Tree, Random Forest, K-Nearest Neighbours, Complement Naive Bayes, a calibrated linear Support Vector Machine, and XGBoost. Complement Naive Bayes uses a non-negative numeric scaling branch. A linear SVM is used to avoid the scaling cost of a kernel SVM on 51,047 rows.
 
-- Rows: 7043
-- Columns: 21
+The final model is selected by churn-class F1 on the held-out test split, with ties resolved by recall, ROC-AUC, precision, and accuracy. On this run, **XGBoost** had the highest F1:
 
-After data cleaning:
+| Test metric | Result |
+|---|---:|
+| Accuracy | 0.6259 |
+| Precision (churn) | 0.4049 |
+| Recall (churn) | 0.6349 |
+| F1 (churn) | 0.4944 |
+| ROC-AUC | 0.6775 |
 
-- Rows: 7032
-- Columns used for modeling: 19 input features
+Comparison table on that same test split (rounded to three decimals):
 
-Target variable:
+| Model | Accuracy | Precision | Recall | F1 | ROC-AUC |
+|---|---:|---:|---:|---:|---:|
+| XGBoost | 0.626 | 0.405 | 0.635 | 0.494 | 0.677 |
+| Random Forest | 0.658 | 0.418 | 0.478 | 0.446 | 0.659 |
+| Decision Tree | 0.587 | 0.363 | 0.571 | 0.444 | 0.608 |
+| Logistic Regression | 0.579 | 0.356 | 0.574 | 0.440 | 0.611 |
+| Complement Naive Bayes | 0.568 | 0.337 | 0.516 | 0.408 | 0.576 |
+| K-Nearest Neighbours | 0.693 | 0.375 | 0.099 | 0.157 | 0.571 |
+| Calibrated linear SVM | 0.713 | 0.549 | 0.017 | 0.033 | 0.610 |
 
-- Churn = 1 → Customer churned
-- Churn = 0 → Customer stayed
+Confusion matrix, with rows as actual `No`/`Yes` and columns as predicted `No`/`Yes`:
 
-The `customerID` column was removed because it is a unique customer identifier and is not useful as a predictive feature.
+| | Predicted No | Predicted Yes |
+|---|---:|---:|
+| Actual No | 4,522 | 2,746 |
+| Actual Yes | 1,074 | 1,868 |
 
----
+These are measured results for the current 80/20 split and default decision threshold, not a claim of improvement over the previous IBM model. Consider the false negatives and false positives alongside churn recall, precision, F1, ROC-AUC and accuracy. The unlabeled holdout has no evaluation metrics.
 
-## 4. Technologies Used
+## Saved model and Streamlit app
 
-- Python
-- Pandas
-- NumPy
-- Matplotlib
-- Seaborn
-- Scikit-learn
-- XGBoost
-- Joblib
-- Streamlit
+`models/churn_model.pkl` contains the complete fitted preprocessing-plus-classifier Pipeline, with the expected 56 Cell2Cell feature names. The previous IBM model is retained separately as `models/churn_model_ibm_backup.pkl`.
 
----
+The app obtains numerical defaults, categorical choices and feature names from the fitted Pipeline. It supports manual entry and CSV uploads, validates required and unexpected columns and numeric values, rejects uploads containing observed `Churn` labels to prevent target leakage, and retains an optional `CustomerID` in downloaded results. The displayed probability bands are illustrative and are not business-validated intervention thresholds.
 
-## 5. Project Workflow
+## Setup and run
 
-Dataset
-↓
-Data Cleaning
-↓
-Exploratory Data Analysis
-↓
-Feature Preparation
-↓
-Train-Test Split
-↓
-Categorical Encoding
-↓
-Feature Scaling
-↓
-Model Training
-↓
-Model Evaluation
-↓
-Model Comparison
-↓
-Final Model Pipeline
-↓
-Model Saving
-↓
-Streamlit Application
-↓
-Churn Prediction
+From the repository root in PowerShell:
 
----
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
 
-## 6. Data Preprocessing
+Run the app:
 
-The following preprocessing steps were performed:
+```powershell
+streamlit run app/app.py
+```
 
-1. Loaded the dataset using Pandas.
-2. Converted `TotalCharges` into numeric format.
-3. Invalid/blank values were converted to missing values.
-4. Rows containing invalid `TotalCharges` values were removed.
-5. Removed the `customerID` identifier.
-6. Converted the target variable `Churn`:
-   - Yes → 1
-   - No → 0
-7. Separated features (X) and target (y).
-8. Numerical features were standardized using StandardScaler.
-9. Categorical features were converted using OneHotEncoder.
+To retrain or inspect the analysis, open `notebooks/churn_analysis.ipynb` in VS Code, select the project `.venv` Python interpreter, and run all cells from top to bottom. Training writes the fitted Pipeline to `models/churn_model.pkl`; keep the original Cell2Cell CSVs in `dataset/`.
 
-The 19 original input features became 45 processed features after one-hot encoding.
-
----
-
-## 7. Exploratory Data Analysis
-
-Important patterns observed during analysis:
-
-- Month-to-month contract customers show higher churn tendency.
-- Customers with lower tenure show higher churn tendency.
-- Electronic check users show comparatively higher churn.
-- Customers without services such as Online Security and Tech Support show higher churn tendency.
-- Monthly charges are associated with differences in churn behavior.
-
-These observations represent associations in the dataset and should not be interpreted as direct causal relationships.
-
----
-
-## 8. Machine Learning Models
-
-The following classification algorithms were trained and compared:
-
-1. Logistic Regression
-2. Decision Tree
-3. Random Forest
-4. K-Nearest Neighbors (KNN)
-5. Naive Bayes
-6. Support Vector Machine (SVM)
-7. XGBoost
-
----
-
-## 9. Model Evaluation
-
-Models were evaluated using:
-
-- Accuracy
-- Precision
-- Recall
-- F1-Score
-- ROC-AUC
-- Confusion Matrix
-
-Cross-validation was also performed to check model consistency.
-
----
-
-## 10. Final Model
-
-Logistic Regression was selected as the final model based on its overall performance across the evaluation metrics.
-
-Approximate test performance:
-
-- Accuracy: 80.38%
-- Precision: 64.85%
-- Recall: 57.22%
-- F1-Score: 60.80%
-- ROC-AUC: 83.59%
-
-The model was trained inside a Scikit-learn Pipeline containing preprocessing and the Logistic Regression classifier.
-
----
-
-## 11. Model Validation
-
-The dataset was divided into:
-
-- 80% training data
-- 20% testing data
-
-Training samples: 5625
-
-Testing samples: 1407
-
-Five-fold cross-validation was also performed.
-
-The Logistic Regression training and testing accuracy were approximately:
-
-- Training Accuracy: 80.46%
-- Testing Accuracy: 80.38%
-
-The small difference indicates no obvious overfitting.
-
----
-
-## 12. Streamlit Application
-
-A Streamlit web application was created for prediction.
-
-The application allows the user to enter customer information and provides:
-
-- Churn probability
-- Churn prediction
-- Risk level
-
-Risk levels are defined using a simple probability-based rule:
-
-- Probability < 40% → Low Risk
-- 40%–69.99% → Medium Risk
-- ≥ 70% → High Risk
-
----
-
-## 13. Project Structure
+## Project structure
 
 ```text
-customer churn prediction/
-│
-├── .venv/
-│
-├── app/
-│   └── app.py
-│
-├── dataset/
-│   └── WA_Fn-UseC_-Telco-Customer-Churn.csv
-│
-├── models/
-│   └── churn_model.pkl
-│
-├── notebooks/
-│   └── churn_analysis.ipynb
-│
-└── requirements.txt
+app/
+  app.py
+dataset/
+  cell2celltrain.csv
+  cell2cellholdout.csv
+models/
+  churn_model.pkl
+  churn_model_ibm_backup.pkl
+notebooks/
+  churn_analysis.ipynb
+  churn_analysis_ibm_backup.ipynb
+requirements.txt
+README.md
+```
