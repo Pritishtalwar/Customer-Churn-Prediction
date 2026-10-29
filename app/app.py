@@ -35,6 +35,9 @@ def load_model():
 
 
 model = load_model()
+decision_threshold = float(getattr(model, "decision_threshold", 0.5))
+if not 0 <= decision_threshold <= 1:
+    raise ValueError("The saved model decision threshold must be between 0 and 1.")
 feature_columns = list(model.feature_names_in_)
 preprocessor = model.named_steps["preprocessor"]
 numeric_features = []
@@ -65,7 +68,8 @@ st.write(
 )
 st.caption(
     f"Model expects {len(feature_columns)} features. CustomerID is retained for "
-    "tracking uploaded rows, but is not a model input."
+    f"tracking uploaded rows, but is not a model input. The saved decision threshold "
+    f"is {decision_threshold:.3f}."
 )
 
 
@@ -111,9 +115,9 @@ def validate_features(frame):
 
 
 def show_predictions(features, identifiers=None):
-    predictions = model.predict(features).astype(int)
     positive_class_index = list(model.classes_).index(1)
     probabilities = model.predict_proba(features)[:, positive_class_index]
+    predictions = (probabilities >= decision_threshold).astype(int)
     results = pd.DataFrame(
         {
             "PredictedChurn": np.where(predictions == 1, "Yes", "No"),
